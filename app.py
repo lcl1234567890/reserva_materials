@@ -9,10 +9,16 @@ from dotenv import load_dotenv
 # CONFIGURACIÓ
 # -----------------------------------------------------------------------------
 load_dotenv()
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql+psycopg2://postgres@localhost:5432/reserva_material"
-)
+#DATABASE_URL = os.getenv(
+#    "DATABASE_URL",
+#    "postgresql+psycopg2://postgres@localhost:5432/reserva_material"
+#)
+#engine = create_engine(DATABASE_URL)
+
+DATABASE_URL = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    st.error("Falta la variable DATABASE_URL als Secrets/entorn.")
+    st.stop()
 engine = create_engine(DATABASE_URL)
 
 def normalize_range(start_date, end_date):
@@ -220,9 +226,9 @@ elif page == "Administració":
                     if st.button("Cancel·lar", key=f"cancel_{r['id']}"):
                         update_reservation_status(r['id'], 'cancel·lada')
                         st.success("Reserva cancel·lada.")
-                        st.experimental_rerun()
+                        st.rerun()
                 with col2:
                     if st.button("Finalitzar", key=f"finish_{r['id']}"):
                         update_reservation_status(r['id'], 'finalitzada')
                         st.success("Reserva finalitzada.")
-                        st.experimental_rerun()
+                        st.rerun()
