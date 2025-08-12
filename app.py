@@ -1,30 +1,83 @@
 import os
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 import pandas as pd
 import streamlit as st
 from sqlalchemy import create_engine, text
 from dotenv import load_dotenv
 
+# Google Calendar & Email
+from googleapiclient.discovery import build
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
 # -----------------------------------------------------------------------------
 # CONFIGURACIÓ
 # -----------------------------------------------------------------------------
 load_dotenv()
-#DATABASE_URL = os.getenv(
-#    "DATABASE_URL",
-#    "postgresql+psycopg2://postgres@localhost:5432/reserva_material"
-#)
-#engine = create_engine(DATABASE_URL)
 
+# DB URL: Secrets (Cloud) > Entorn (local). Sense fallback a localhost.
 DATABASE_URL = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     st.error("Falta la variable DATABASE_URL als Secrets/entorn.")
     st.stop()
 engine = create_engine(DATABASE_URL)
 
+# Google i correu (tots des de Secrets)
+GOOGLE_CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
+GOOGLE_REFRESH_TOKEN = st.secrets.get("GOOGLE_REFRESH_TOKEN")
+GOOGLE_CALENDAR_ID = st.secrets.get("GOOGLE_CALENDAR_ID") or "primary"
+
+EMAIL_FROM = st.secrets.get("EMAIL_FROM")
+EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD")
+
+# -----------------------------------------------------------------------------
+# UTILITATS
+# -----------------------------------------------------------------------------
 def normalize_range(start_date, end_date):
     start_dt = datetime.combine(start_date, time(0, 0, 0))
     end_dt = datetime.combine(end_date, time(23, 59, 59))
     return start_dt, end_dt
+
+def google_calendar_service():
+    creds = Credentials(
+        token=None,
+        refresh_token=GOOGLE_REFRESH_TOKEN,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=GOOGLE_CLIENT_ID,
+        client_secret=GOOGLE_CLIENT_SECRET,
+        scopes=["https://www.googleapis.com/auth/calendar"],
+    )
+    # refresca per assegurar token d'accés vàlid
+    creds.refresh(Request())
+    return build("calendar", "v3", credentials=creds)
+
+def create_google_calendar_event(start_dt, end_dt, summary, description):
+    service = google_calendar_service()
+    event = {
+        "summary": summary,
+        "description": description,
+        "start": {"dateTime": start_dt.isoformat(), "timeZone": "Europe/Madrid"},
+        "end": {"dateTime": end_dt.isoformat(), "timeZone": "Europe/Madrid"},
+    }
+    created = service.events().insert(calendarId=GOOGLE_CALENDAR_ID, body=event).execute()
+    return created.get("htmlLink")
+
+def enviar_email(destinatari: str, assumpte: str, cos: str):
+    if not (EMAIL_FROM and EMAIL_PASSWORD):
+        raise RuntimeError("EMAIL_FROM/EMAIL_PASSWORD no configurats als Secrets.")
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_FROM
+    msg["To"] = destinatari
+    msg["Subject"] = assumpte
+    msg.attach(MIMEText(cos, "plain", "utf-8"))
+    with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        server.starttls()
+        server.login(EMAIL_FROM, EMAIL_PASSWORD)
+        server.send_message(msg)
 
 # -----------------------------------------------------------------------------
 # FUNCIONS BD
@@ -42,10 +95,8 @@ def check_availability(material_id, start_dt, end_dt, requested_qty):
             text("SELECT total_packs FROM materials WHERE id=:id"),
             {"id": material_id}
         ).scalar_one()
-
         if total_packs is None:
-            return True, None
-
+            return True, None  # il·limitada
         reserved = conn.execute(text("""
             SELECT COALESCE(SUM(rm.quantitat_packs), 0)
             FROM reserves_material rm
@@ -55,7 +106,6 @@ def check_availability(material_id, start_dt, end_dt, requested_qty):
               AND :end_ts > r.data_recollida
               AND :start_ts < r.data_retorn
         """), {"mat_id": material_id, "start_ts": start_dt, "end_ts": end_dt}).scalar_one()
-
     available = total_packs - reserved
     return available >= requested_qty, available
 
@@ -82,7 +132,6 @@ def create_reservation(data, materials_selected):
                 INSERT INTO reserves_material (reserva_id, material_id, quantitat_packs)
                 VALUES (:res_id, :mat_id, :qty)
             """), {"res_id": res_id, "mat_id": mat_id, "qty": qty})
-
     return res_id
 
 def get_all_reservations():
@@ -101,9 +150,8 @@ def get_all_reservations():
 
 def update_reservation_status(res_id, new_status):
     with engine.begin() as conn:
-        conn.execute(text("""
-            UPDATE reserves SET estat=:estat WHERE id=:id
-        """), {"estat": new_status, "id": res_id})
+        conn.execute(text("UPDATE reserves SET estat=:estat WHERE id=:id"),
+                     {"estat": new_status, "id": res_id})
 
 def mark_finished_reservations():
     now = datetime.now()
@@ -119,6 +167,20 @@ def mark_finished_reservations():
 # -----------------------------------------------------------------------------
 st.set_page_config(page_title="Reserves de Material", page_icon="📦", layout="wide")
 page = st.sidebar.selectbox("Navegació", ["Formulari públic", "Administració"])
+
+# Botó de test de calendari a la sidebar
+if st.sidebar.button("🔁 Fer test de calendari"):
+    try:
+        link = create_google_calendar_event(
+            start_dt=datetime.utcnow(),
+            end_dt=datetime.utcnow() + timedelta(hours=1),
+            summary="🔧 Test Reserva Streamlit",
+            description="Test d'integració amb Google Calendar"
+        )
+        st.sidebar.success("Esdeveniment creat!")
+        st.sidebar.markdown(f"[Veure al calendari]({link})")
+    except Exception as e:
+        st.sidebar.error(f"Error: {e}")
 
 # ---------------------- FORMULARI PÚBLIC ----------------------
 if page == "Formulari públic":
@@ -194,6 +256,41 @@ if page == "Formulari públic":
                     "responsable_codi_postal": responsable_cp
                 }
                 res_id = create_reservation(data_dict, selected_materials)
+
+                # --- Email + Calendar ---
+                llista_materials = "\n".join(
+                    f" - {next(m['nom'] for m in materials_list if m['id']==mid)} x{qty}"
+                    for (mid, qty) in selected_materials
+                )
+                email_text = (
+                    f"Hola {responsable_nom},\n\n"
+                    f"Hem registrat la teva reserva:\n{llista_materials}\n\n"
+                    f"Recollida: {data_recollida.strftime('%Y-%m-%d')}\n"
+                    f"Retorn:    {data_retorn.strftime('%Y-%m-%d')}\n\n"
+                    "Gràcies!"
+                )
+                try:
+                    if responsable_email:
+                        enviar_email(responsable_email, f"Confirmació reserva #{res_id}", email_text)
+                    if EMAIL_FROM:
+                        enviar_email(EMAIL_FROM, f"[Còpia] reserva #{res_id}", email_text)
+                except Exception as e:
+                    st.warning(f"No s'ha pogut enviar el correu: {e}")
+
+                try:
+                    summary = f"Reserva material ({nom_centre})"
+                    descr = (
+                        f"Centre: {nom_centre} ({nif_cif})\n"
+                        f"Responsable: {responsable_nom} ({responsable_dni})\n\n"
+                        f"Materials:\n{llista_materials}\n\n"
+                        f"Contacte centre: {adreca_electronica} / {telefon_centre or ''}\n"
+                        f"Adreça: {adreca_centre or ''}, {poblacio_centre or ''} {cp_centre or ''}"
+                    )
+                    link = create_google_calendar_event(start_dt, end_dt, summary, descr)
+                    st.info(f"📅 Esdeveniment creat al teu calendari: {link}")
+                except Exception as e:
+                    st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")
+
                 st.success(f"Reserva #{res_id} creada correctament! ✅")
 
 # ---------------------- ADMINISTRACIÓ ----------------------
@@ -203,7 +300,7 @@ elif page == "Administració":
     if st.button("Marcar reserves passades com a finalitzades"):
         mark_finished_reservations()
         st.success("Reserves actualitzades.")
-        st.experimental_rerun()
+        st.rerun()
 
     reservations = get_all_reservations()
     if not reservations:
