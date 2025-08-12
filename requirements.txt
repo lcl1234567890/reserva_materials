@@ -3,3 +3,6 @@ sqlalchemy
 psycopg2-binary
 python-dotenv
 pandas
+google-api-python-client
+google-auth
+google-auth-oauthlib
