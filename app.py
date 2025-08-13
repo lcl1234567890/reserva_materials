@@ -14,25 +14,39 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # -----------------------------------------------------------------------------
-# CONFIGURACIÓ
+# CONFIGURACIÓ (ENV primer, si no, Secrets)
 # -----------------------------------------------------------------------------
 load_dotenv()
 
-# DB URL: Secrets (Cloud) > Entorn (local). Sense fallback a localhost.
-DATABASE_URL = st.secrets.get("DATABASE_URL") or os.getenv("DATABASE_URL")
+def cfg(name: str, default: str = None):
+    """Llegeix de l'entorn (.env) i, si no hi és, intenta de st.secrets (Cloud)."""
+    val = os.getenv(name)
+    if val is not None:
+        return val
+    try:
+        return st.secrets.get(name, default)  # això només existeix al Cloud
+    except Exception:
+        return default
+
+# DB URL (sense fallback a localhost!)
+DATABASE_URL = cfg("DATABASE_URL")
 if not DATABASE_URL:
-    st.error("Falta la variable DATABASE_URL als Secrets/entorn.")
+    st.error("Falta DATABASE_URL (posa-la al .env en local o als Secrets al Cloud).")
     st.stop()
 engine = create_engine(DATABASE_URL)
 
-# Google i correu (tots des de Secrets)
-GOOGLE_CLIENT_ID = st.secrets.get("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = st.secrets.get("GOOGLE_CLIENT_SECRET")
-GOOGLE_REFRESH_TOKEN = st.secrets.get("GOOGLE_REFRESH_TOKEN")
-GOOGLE_CALENDAR_ID = st.secrets.get("GOOGLE_CALENDAR_ID") or "primary"
+# Google & Email
+GOOGLE_CLIENT_ID     = cfg("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = cfg("GOOGLE_CLIENT_SECRET")
+GOOGLE_REFRESH_TOKEN = cfg("GOOGLE_REFRESH_TOKEN")
+GOOGLE_CALENDAR_ID   = cfg("GOOGLE_CALENDAR_ID") or "primary"
 
-EMAIL_FROM = st.secrets.get("EMAIL_FROM")
-EMAIL_PASSWORD = st.secrets.get("EMAIL_PASSWORD")
+EMAIL_FROM     = cfg("EMAIL_FROM")
+EMAIL_PASSWORD = (cfg("EMAIL_PASSWORD") or "").replace(" ", "")  # app password sense espais
+
+# Toggles útils per provar en local (opcional)
+ENABLE_CALENDAR = cfg("ENABLE_CALENDAR", "true").lower() == "true"
+ENABLE_EMAIL    = cfg("ENABLE_EMAIL", "true").lower() == "true"
 
 # -----------------------------------------------------------------------------
 # UTILITATS
@@ -78,6 +92,7 @@ def enviar_email(destinatari: str, assumpte: str, cos: str):
         server.starttls()
         server.login(EMAIL_FROM, EMAIL_PASSWORD)
         server.send_message(msg)
+
 
 # -----------------------------------------------------------------------------
 # FUNCIONS BD
@@ -262,6 +277,47 @@ if page == "Formulari públic":
                     f" - {next(m['nom'] for m in materials_list if m['id']==mid)} x{qty}"
                     for (mid, qty) in selected_materials
                 )
+
+                # cos del correu
+                email_text = (
+                    f"Hola {responsable_nom},\n\n"
+                    f"Hem registrat la teva reserva:\n{llista_materials}\n\n"
+                    f"Recollida: {data_recollida.strftime('%Y-%m-%d')}\n"
+                    f"Retorn:    {data_retorn.strftime('%Y-%m-%d')}\n\n"
+                    "Gràcies!"
+                )
+
+                # Enviament d'emails (segons toggle)
+                if ENABLE_EMAIL:
+                    try:
+                        if responsable_email:
+                            enviar_email(responsable_email, f"Confirmació reserva #{res_id}", email_text)
+                        if EMAIL_FROM:
+                            enviar_email(EMAIL_FROM, f"[Còpia] reserva #{res_id}", email_text)
+                    except Exception as e:
+                        st.warning(f"No s'ha pogut enviar el correu: {e}")
+
+                # Creació de l’esdeveniment al TEU calendari (segons toggle)
+                if ENABLE_CALENDAR:
+                    try:
+                        summary = f"Reserva material ({nom_centre})"
+                        descr = (
+                            f"Centre: {nom_centre} ({nif_cif})\n"
+                            f"Responsable: {responsable_nom} ({responsable_dni})\n\n"
+                            f"Materials:\n{llista_materials}\n\n"
+                            f"Contacte centre: {adreca_electronica} / {telefon_centre or ''}\n"
+                            f"Adreça: {adreca_centre or ''}, {poblacio_centre or ''} {cp_centre or ''}"
+                        )
+                        link = create_google_calendar_event(start_dt, end_dt, summary, descr)
+                        st.info(f"📅 Esdeveniment creat al teu calendari: {link}")
+                    except Exception as e:
+                        st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")
+
+                '''# --- Email + Calendar ---
+                llista_materials = "\n".join(
+                    f" - {next(m['nom'] for m in materials_list if m['id']==mid)} x{qty}"
+                    for (mid, qty) in selected_materials
+                )
                 email_text = (
                     f"Hola {responsable_nom},\n\n"
                     f"Hem registrat la teva reserva:\n{llista_materials}\n\n"
@@ -289,7 +345,7 @@ if page == "Formulari públic":
                     link = create_google_calendar_event(start_dt, end_dt, summary, descr)
                     st.info(f"📅 Esdeveniment creat al teu calendari: {link}")
                 except Exception as e:
-                    st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")
+                    st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")'''
 
                 st.success(f"Reserva #{res_id} creada correctament! ✅")
 
