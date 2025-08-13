@@ -313,40 +313,6 @@ if page == "Formulari públic":
                     except Exception as e:
                         st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")
 
-                '''# --- Email + Calendar ---
-                llista_materials = "\n".join(
-                    f" - {next(m['nom'] for m in materials_list if m['id']==mid)} x{qty}"
-                    for (mid, qty) in selected_materials
-                )
-                email_text = (
-                    f"Hola {responsable_nom},\n\n"
-                    f"Hem registrat la teva reserva:\n{llista_materials}\n\n"
-                    f"Recollida: {data_recollida.strftime('%Y-%m-%d')}\n"
-                    f"Retorn:    {data_retorn.strftime('%Y-%m-%d')}\n\n"
-                    "Gràcies!"
-                )
-                try:
-                    if responsable_email:
-                        enviar_email(responsable_email, f"Confirmació reserva #{res_id}", email_text)
-                    if EMAIL_FROM:
-                        enviar_email(EMAIL_FROM, f"[Còpia] reserva #{res_id}", email_text)
-                except Exception as e:
-                    st.warning(f"No s'ha pogut enviar el correu: {e}")
-
-                try:
-                    summary = f"Reserva material ({nom_centre})"
-                    descr = (
-                        f"Centre: {nom_centre} ({nif_cif})\n"
-                        f"Responsable: {responsable_nom} ({responsable_dni})\n\n"
-                        f"Materials:\n{llista_materials}\n\n"
-                        f"Contacte centre: {adreca_electronica} / {telefon_centre or ''}\n"
-                        f"Adreça: {adreca_centre or ''}, {poblacio_centre or ''} {cp_centre or ''}"
-                    )
-                    link = create_google_calendar_event(start_dt, end_dt, summary, descr)
-                    st.info(f"📅 Esdeveniment creat al teu calendari: {link}")
-                except Exception as e:
-                    st.warning(f"No s'ha pogut crear l'esdeveniment al calendari: {e}")'''
-
                 st.success(f"Reserva #{res_id} creada correctament! ✅")
 
 # ---------------------- ADMINISTRACIÓ ----------------------
