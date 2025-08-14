@@ -460,7 +460,7 @@ if page == "Formulari públic":
 
     # Validació i creació
     if submit_btn:
-        if not adreca_electronica or not nom_centre or not nif_cif or not telefon_centre, or not adreça_centre or not poblacio_centre or not cp_centre or not responsable_nom or not responsable_dni or not responsable_telefon or not responsable_email:
+        if not adreca_electronica or not nom_centre or not nif_cif or not telefon_centre or not adreça_centre or not poblacio_centre or not cp_centre or not responsable_nom or not responsable_dni or not responsable_telefon or not responsable_email:
             st.error("Omple tots els camps obligatoris (*)")
         elif data_retorn < data_recollida:
             st.error("La data de retorn ha de ser igual o posterior a la de recollida.")
