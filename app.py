@@ -439,7 +439,7 @@ if page == "Formulari públic":
 
     # 3) FINALMENT EL FORMULARI DEL CENTRE/RESPONSABLE + ENVIAR
     with st.form("reserva_form"):
-        st.subheader("Dades del Centre/Institució")
+        st.subheader("Dades de Facturació")
         adreca_electronica = st.text_input("Adreça electrònica *", key="adreca_electronica")
         nom_centre         = st.text_input("Nom del Centre/Institució *", key="nom_centre")
         nif_cif            = st.text_input("N.I.F / C.I.F de l'entitat *", key="nif_cif")
