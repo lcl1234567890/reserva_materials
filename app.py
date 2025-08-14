@@ -443,15 +443,15 @@ if page == "Formulari públic":
         adreca_electronica = st.text_input("Adreça electrònica *", key="adreca_electronica")
         nom_centre         = st.text_input("Nom del Centre/Institució *", key="nom_centre")
         nif_cif            = st.text_input("N.I.F / C.I.F de l'entitat *", key="nif_cif")
-        telefon_centre     = st.text_input("Telèfon", key="telefon_centre")
-        adreca_centre      = st.text_input("Adreça", key="adreca_centre")
-        poblacio_centre    = st.text_input("Població", key="poblacio_centre")
-        cp_centre          = st.text_input("Codi Postal", key="cp_centre")
+        telefon_centre     = st.text_input("Telèfon *", key="telefon_centre")
+        adreca_centre      = st.text_input("Adreça *", key="adreca_centre")
+        poblacio_centre    = st.text_input("Població *", key="poblacio_centre")
+        cp_centre          = st.text_input("Codi Postal *", key="cp_centre")
 
         st.subheader("Dades del responsable")
         responsable_nom       = st.text_input("Responsable del material *", key="responsable_nom")
         responsable_dni       = st.text_input("DNI *", key="responsable_dni")
-        responsable_telefon   = st.text_input("Telèfon", key="telefon_responsable")
+        responsable_telefon   = st.text_input("Telèfon *", key="telefon_responsable")
         responsable_email     = st.text_input("Correu electrònic *", key="email_responsable")
         responsable_poblacio  = st.text_input("Població", key="poblacio_responsable")
         responsable_cp        = st.text_input("Codi Postal", key="cp_responsable")
@@ -460,7 +460,7 @@ if page == "Formulari públic":
 
     # Validació i creació
     if submit_btn:
-        if not adreca_electronica or not nom_centre or not nif_cif or not responsable_nom or not responsable_dni or not responsable_email:
+        if not adreca_electronica or not nom_centre or not nif_cif or not telefon_centre, or not adreça_centre or not poblacio_centre or not cp_centre or not responsable_nom or not responsable_dni or not responsable_telefon or not responsable_email:
             st.error("Omple tots els camps obligatoris (*)")
         elif data_retorn < data_recollida:
             st.error("La data de retorn ha de ser igual o posterior a la de recollida.")
